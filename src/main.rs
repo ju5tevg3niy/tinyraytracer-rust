@@ -91,19 +91,6 @@ impl Sphere {
     }
 }
 
-fn main() {
-    let s = Sphere {
-        center: Vec3 {
-            x: -3.0,
-            y: 0.0,
-            z: -16.0,
-        },
-        radius: 2.0,
-    };
-
-    render(&s);
-}
-
 fn cast_ray(orig: &Vec3, dir: &Vec3, sphere: &Sphere) -> Pixel {
     match sphere.ray_intersect(orig, dir) {
         //sphere color
@@ -153,4 +140,17 @@ fn render(sphere: &Sphere) {
             .write_all(&pixel_bytes)
             .expect("Failed to write pixel data");
     }
+}
+
+fn main() {
+    let s = Sphere {
+        center: Vec3 {
+            x: -3.0,
+            y: 0.0,
+            z: -16.0,
+        },
+        radius: 2.0,
+    };
+
+    render(&s);
 }
