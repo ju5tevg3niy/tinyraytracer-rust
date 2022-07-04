@@ -60,11 +60,26 @@ impl Vec3 {
     fn normalize(&self) -> Self {
         self.mul(1.0 / self.norm())
     }
+
+    fn to_pixel(self) -> Pixel {
+        Pixel {
+            r: self.x,
+            g: self.y,
+            b: self.z,
+        }
+    }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Material {
+    diffuse_color: Vec3,
+}
+
+#[derive(Debug)]
 struct Sphere {
     center: Vec3,
     radius: f64,
+    material: Material,
 }
 
 impl Sphere {
@@ -91,24 +106,51 @@ impl Sphere {
     }
 }
 
-fn cast_ray(orig: &Vec3, dir: &Vec3, sphere: &Sphere) -> Pixel {
-    match sphere.ray_intersect(orig, dir) {
-        //sphere color
-        Some(_) => Pixel {
-            r: 0.4,
-            g: 0.4,
-            b: 0.3,
-        },
+fn scene_intersect(
+    orig: &Vec3,
+    dir: &Vec3,
+    spheres: &Vec<Sphere>,
+) -> Option<(Vec3, Vec3, Material)> {
+    let mut closest_sphere = None;
+    for sphere in spheres {
+        if let Some(distance) = sphere.ray_intersect(orig, dir) {
+            let s = Some((distance, sphere));
+            match closest_sphere {
+                None => closest_sphere = s,
+                Some((old_distance, _)) => {
+                    if distance < old_distance {
+                        closest_sphere = s
+                    }
+                }
+            }
+        }
+    }
+
+    match closest_sphere {
+        None => None,
+        Some((distance, sphere)) => {
+            let hit = orig.add(&dir.mul(distance));
+            let normal = (hit.sub(&sphere.center)).normalize();
+            let material = sphere.material;
+            Some((hit, normal, material))
+        }
+    }
+}
+
+fn cast_ray(orig: &Vec3, dir: &Vec3, spheres: &Vec<Sphere>) -> Pixel {
+    match scene_intersect(orig, dir, spheres) {
         //background color
         None => Pixel {
             r: 0.2,
             g: 0.7,
             b: 0.8,
         },
+        //sphere color
+        Some((_, _, material)) => material.diffuse_color.to_pixel(),
     }
 }
 
-fn render(sphere: &Sphere) {
+fn render(spheres: &Vec<Sphere>) {
     const WIDTH: usize = 1024;
     const HEIGHT: usize = 768;
     const FOV: f64 = PI / 2.0;
@@ -121,7 +163,7 @@ fn render(sphere: &Sphere) {
         let y = -((i / WIDTH) as f64) - 0.5 + HEIGHT as f64 / 2.0;
         let z = WIDTH as f64 / -screen_width;
         let dir = Vec3 { x, y, z }.normalize();
-        framebuffer.push(cast_ray(&ORIGIN, &dir, sphere));
+        framebuffer.push(cast_ray(&ORIGIN, &dir, spheres));
     }
 
     let out = File::create("out.ppm").expect("Failed to create file");
@@ -143,14 +185,60 @@ fn render(sphere: &Sphere) {
 }
 
 fn main() {
-    let s = Sphere {
+    let ivory = Material {
+        diffuse_color: Vec3 {
+            x: 0.4,
+            y: 0.4,
+            z: 0.3,
+        },
+    };
+    let red_rubber = Material {
+        diffuse_color: Vec3 {
+            x: 0.3,
+            y: 0.1,
+            z: 0.1,
+        },
+    };
+
+    let mut spheres = Vec::new();
+    spheres.push(Sphere {
         center: Vec3 {
             x: -3.0,
             y: 0.0,
             z: -16.0,
         },
         radius: 2.0,
-    };
+        material: ivory,
+    });
+    spheres.push(Sphere {
+        center: Vec3 {
+            x: -1.0,
+            y: -1.5,
+            z: -12.0,
+        },
+        radius: 2.0,
+        material: red_rubber,
+    });
+    spheres.push(Sphere {
+        center: Vec3 {
+            x: 1.5,
+            y: -0.5,
+            z: -18.0,
+        },
+        radius: 3.0,
+        material: red_rubber,
+    });
+    spheres.push(Sphere {
+        center: Vec3 {
+            x: 7.0,
+            y: 5.0,
+            z: -18.0,
+        },
+        radius: 4.0,
+        material: ivory,
+    });
 
-    render(&s);
+    dbg!(&spheres);
+
+    render(&spheres);
 }
