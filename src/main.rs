@@ -82,6 +82,12 @@ struct Sphere {
     material: Material,
 }
 
+#[derive(Debug)]
+struct Light {
+    position: Vec3,
+    intensity: f64,
+}
+
 impl Sphere {
     fn ray_intersect(&self, orig: &Vec3, dir: &Vec3) -> Option<f64> {
         let l = self.center.sub(orig);
@@ -137,23 +143,35 @@ fn scene_intersect(
     }
 }
 
-fn cast_ray(orig: &Vec3, dir: &Vec3, spheres: &Vec<Sphere>) -> Pixel {
+fn cast_ray(orig: &Vec3, dir: &Vec3, spheres: &Vec<Sphere>, lights: &Vec<Light>) -> Pixel {
     match scene_intersect(orig, dir, spheres) {
-        //background color
+        //background
         None => Pixel {
             r: 0.2,
             g: 0.7,
             b: 0.8,
         },
-        //sphere color
-        Some((_, _, material)) => material.diffuse_color.to_pixel(),
+        //sphere
+        Some((hit, normal, material)) => {
+            let mut diffuse_light_intensity = 0.0;
+            for light in lights {
+                let light_dir = light.position.sub(&hit).normalize();
+                diffuse_light_intensity += light.intensity * light_dir.dot(&normal).max(0.0);
+            }
+
+            material
+                .diffuse_color
+                .mul(diffuse_light_intensity)
+                .to_pixel()
+        }
     }
 }
 
-fn render(spheres: &Vec<Sphere>) {
+fn render(spheres: &Vec<Sphere>, lights: &Vec<Light>) {
     const WIDTH: usize = 1024;
     const HEIGHT: usize = 768;
-    const FOV: f64 = PI / 2.0;
+    // pi/3 => 180deg/3 = 60deg
+    const FOV: f64 = PI / 3.0;
     let screen_width = 2.0 * (FOV / 2.0).tan();
 
     let mut framebuffer = Vec::with_capacity(WIDTH * HEIGHT);
@@ -163,7 +181,7 @@ fn render(spheres: &Vec<Sphere>) {
         let y = -((i / WIDTH) as f64) - 0.5 + HEIGHT as f64 / 2.0;
         let z = HEIGHT as f64 / -screen_width;
         let dir = Vec3 { x, y, z }.normalize();
-        framebuffer.push(cast_ray(&ORIGIN, &dir, spheres));
+        framebuffer.push(cast_ray(&ORIGIN, &dir, spheres, lights));
     }
 
     let out = File::create("out.ppm").expect("Failed to create file");
@@ -200,45 +218,55 @@ fn main() {
         },
     };
 
-    let mut spheres = Vec::new();
-    spheres.push(Sphere {
-        center: Vec3 {
-            x: -3.0,
-            y: 0.0,
-            z: -16.0,
+    let spheres = vec![
+        Sphere {
+            center: Vec3 {
+                x: -3.0,
+                y: 0.0,
+                z: -16.0,
+            },
+            radius: 2.0,
+            material: ivory,
         },
-        radius: 2.0,
-        material: ivory,
-    });
-    spheres.push(Sphere {
-        center: Vec3 {
-            x: -1.0,
-            y: -1.5,
-            z: -12.0,
+        Sphere {
+            center: Vec3 {
+                x: -1.0,
+                y: -1.5,
+                z: -12.0,
+            },
+            radius: 2.0,
+            material: red_rubber,
         },
-        radius: 2.0,
-        material: red_rubber,
-    });
-    spheres.push(Sphere {
-        center: Vec3 {
-            x: 1.5,
-            y: -0.5,
-            z: -18.0,
+        Sphere {
+            center: Vec3 {
+                x: 1.5,
+                y: -0.5,
+                z: -18.0,
+            },
+            radius: 3.0,
+            material: red_rubber,
         },
-        radius: 3.0,
-        material: red_rubber,
-    });
-    spheres.push(Sphere {
-        center: Vec3 {
-            x: 7.0,
-            y: 5.0,
-            z: -18.0,
+        Sphere {
+            center: Vec3 {
+                x: 7.0,
+                y: 5.0,
+                z: -18.0,
+            },
+            radius: 4.0,
+            material: ivory,
         },
-        radius: 4.0,
-        material: ivory,
-    });
+    ];
 
-    dbg!(&spheres);
+    let lights = vec![Light {
+        position: Vec3 {
+            x: -20.0,
+            y: 20.0,
+            z: 20.0,
+        },
+        intensity: 1.5,
+    }];
 
-    render(&spheres);
+    dbg!(&spheres, &lights);
+
+    render(&spheres, &lights);
 }
