@@ -161,7 +161,7 @@ fn render(spheres: &Vec<Sphere>) {
     for i in 0..WIDTH * HEIGHT {
         let x = (i % WIDTH) as f64 + 0.5 - WIDTH as f64 / 2.0;
         let y = -((i / WIDTH) as f64) - 0.5 + HEIGHT as f64 / 2.0;
-        let z = WIDTH as f64 / -screen_width;
+        let z = HEIGHT as f64 / -screen_width;
         let dir = Vec3 { x, y, z }.normalize();
         framebuffer.push(cast_ray(&ORIGIN, &dir, spheres));
     }
