@@ -4,6 +4,8 @@ use std::{
     io::{BufWriter, Write},
 };
 
+const EPS: f64 = 1e-3;
+
 #[derive(Debug, Clone, Copy)]
 struct Pixel {
     r: f64,
@@ -173,8 +175,29 @@ fn cast_ray(orig: &Vec3, dir: &Vec3, spheres: &Vec<Sphere>, lights: &Vec<Light>)
             let mut sli = 0.0;
 
             for light in lights {
-                let light_dir = light.position.sub(&hit).normalize();
-                dli += light.intensity * light_dir.dot(&normal).max(0.0);
+                let light_vec = light.position.sub(&hit);
+                let light_dir = light_vec.normalize();
+
+                let light_normal_projection = light_dir.dot(&normal);
+
+                // move hit point a little to not intersect object again
+                let perturbation = normal.mul(EPS);
+                let shadow_orig = if light_normal_projection < 0.0 {
+                    // light is inside object
+                    hit.sub(&perturbation)
+                } else {
+                    // light is outside object
+                    hit.add(&perturbation)
+                };
+
+                if let Some((shadow_hit, _, _)) = scene_intersect(&shadow_orig, &light_dir, spheres)
+                {
+                    if light_vec.norm() > shadow_hit.sub(&shadow_orig).norm() {
+                        continue;
+                    }
+                }
+
+                dli += light.intensity * light_normal_projection.max(0.0);
                 sli += light.intensity
                     * light_dir
                         .reflect(&normal)
