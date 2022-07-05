@@ -76,8 +76,14 @@ impl Vec3 {
 
 #[derive(Debug, Clone, Copy)]
 struct Material {
+    // color of material
     diffuse_color: Vec3,
+
+    // albedo[0] - diffuse reflection constant
+    // albedo[1] - specular reflection constant
     albedo: [f64; 2],
+
+    // shininess constant
     specular_exponent: f64,
 }
 
@@ -159,6 +165,8 @@ fn cast_ray(orig: &Vec3, dir: &Vec3, spheres: &Vec<Sphere>, lights: &Vec<Light>)
         },
         //sphere
         Some((hit, normal, material)) => {
+            // calculate shading via Phong model
+
             // diffuse light intensity
             let mut dli = 0.0;
             // specular light intensity
@@ -312,7 +320,7 @@ fn main() {
         },
     ];
 
-    dbg!(&spheres, &lights);
+    // dbg!(&spheres, &lights);
 
     render(&spheres, &lights);
 }
