@@ -13,6 +13,16 @@ struct Pixel {
     b: f64,
 }
 
+impl Pixel {
+    fn to_vec3(self) -> Vec3 {
+        Vec3 {
+            x: self.r,
+            y: self.g,
+            z: self.b,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Vec3 {
     x: f64,
@@ -83,7 +93,8 @@ struct Material {
 
     // albedo[0] - diffuse reflection constant
     // albedo[1] - specular reflection constant
-    albedo: [f64; 2],
+    // albedo[2] - reflectance ?
+    albedo: [f64; 3],
 
     // shininess constant
     specular_exponent: f64,
@@ -157,67 +168,95 @@ fn scene_intersect(
     }
 }
 
-fn cast_ray(orig: &Vec3, dir: &Vec3, spheres: &Vec<Sphere>, lights: &Vec<Light>) -> Pixel {
-    match scene_intersect(orig, dir, spheres) {
-        //background
-        None => Pixel {
-            r: 0.2,
-            g: 0.7,
-            b: 0.8,
-        },
-        //sphere
-        Some((hit, normal, material)) => {
-            // calculate shading via Phong model
+fn cast_ray(
+    depth: usize,
+    orig: &Vec3,
+    dir: &Vec3,
+    spheres: &Vec<Sphere>,
+    lights: &Vec<Light>,
+) -> Pixel {
+    const BACKGROUND_COLOR: Pixel = Pixel {
+        r: 0.2,
+        g: 0.7,
+        b: 0.8,
+    };
 
-            // diffuse light intensity
-            let mut dli = 0.0;
-            // specular light intensity
-            let mut sli = 0.0;
+    if depth > 4 {
+        BACKGROUND_COLOR
+    } else {
+        match scene_intersect(orig, dir, spheres) {
+            //background
+            None => BACKGROUND_COLOR,
+            //sphere
+            Some((hit, normal, material)) => {
+                // calculate shading via Phong model
 
-            for light in lights {
-                let light_vec = light.position.sub(&hit);
-                let light_dir = light_vec.normalize();
-
-                let light_normal_projection = light_dir.dot(&normal);
+                // diffuse light intensity
+                let mut dli = 0.0;
+                // specular light intensity
+                let mut sli = 0.0;
 
                 // move hit point a little to not intersect object again
-                let perturbation = normal.mul(EPS);
-                let shadow_orig = if light_normal_projection < 0.0 {
-                    // light is inside object
-                    hit.sub(&perturbation)
-                } else {
-                    // light is outside object
-                    hit.add(&perturbation)
-                };
+                let perturb = normal.mul(EPS);
+                let hit_outside = hit.add(&perturb);
+                let hit_inside = hit.sub(&perturb);
 
-                if let Some((shadow_hit, _, _)) = scene_intersect(&shadow_orig, &light_dir, spheres)
-                {
-                    if light_vec.norm() > shadow_hit.sub(&shadow_orig).norm() {
-                        continue;
+                let reflect_dir = dir.reflect(&normal);
+                let reflect_orig = if reflect_dir.dot(&normal) < 0.0 {
+                    // ray is reflected from inside the object
+                    hit_inside
+                } else {
+                    // ray is reflected from outside of the object
+                    hit_outside
+                };
+                let reflect_color =
+                    cast_ray(depth + 1, &reflect_orig, &reflect_dir, spheres, lights).to_vec3();
+
+                for light in lights {
+                    let light_vec = light.position.sub(&hit);
+                    let light_dir = light_vec.normalize();
+
+                    let light_normal_projection = light_dir.dot(&normal);
+
+                    let shadow_orig = if light_normal_projection < 0.0 {
+                        // light is "behind" the hit
+                        hit_inside
+                    } else {
+                        // light is "in front" of the hit
+                        hit_outside
+                    };
+
+                    if let Some((shadow_hit, _, _)) =
+                        scene_intersect(&shadow_orig, &light_dir, spheres)
+                    {
+                        if light_vec.norm() > shadow_hit.sub(&shadow_orig).norm() {
+                            continue;
+                        }
                     }
+
+                    dli += light.intensity * light_normal_projection.max(0.0);
+                    sli += light.intensity
+                        * light_dir
+                            .reflect(&normal)
+                            .dot(dir)
+                            .max(0.0)
+                            .powf(material.specular_exponent);
                 }
 
-                dli += light.intensity * light_normal_projection.max(0.0);
-                sli += light.intensity
-                    * light_dir
-                        .reflect(&normal)
-                        .dot(dir)
-                        .max(0.0)
-                        .powf(material.specular_exponent);
+                material
+                    .diffuse_color
+                    .mul(dli * material.albedo[0])
+                    .add(
+                        &Vec3 {
+                            x: 1.0,
+                            y: 1.0,
+                            z: 1.0,
+                        }
+                        .mul(sli * material.albedo[1]),
+                    )
+                    .add(&reflect_color.mul(material.albedo[2]))
+                    .to_pixel()
             }
-
-            material
-                .diffuse_color
-                .mul(dli * material.albedo[0])
-                .add(
-                    &Vec3 {
-                        x: 1.0,
-                        y: 1.0,
-                        z: 1.0,
-                    }
-                    .mul(sli * material.albedo[1]),
-                )
-                .to_pixel()
         }
     }
 }
@@ -236,7 +275,7 @@ fn render(spheres: &Vec<Sphere>, lights: &Vec<Light>) {
         let y = -((i / WIDTH) as f64) - 0.5 + HEIGHT as f64 / 2.0;
         let z = HEIGHT as f64 / -screen_width;
         let dir = Vec3 { x, y, z }.normalize();
-        framebuffer.push(cast_ray(&ORIGIN, &dir, spheres, lights));
+        framebuffer.push(cast_ray(0, &ORIGIN, &dir, spheres, lights));
     }
 
     let out = File::create("out.ppm").expect("Failed to create file");
@@ -264,7 +303,7 @@ fn main() {
             y: 0.4,
             z: 0.3,
         },
-        albedo: [0.6, 0.3],
+        albedo: [0.6, 0.3, 0.1],
         specular_exponent: 50.0,
     };
     let red_rubber = Material {
@@ -273,8 +312,17 @@ fn main() {
             y: 0.1,
             z: 0.1,
         },
-        albedo: [0.9, 0.1],
+        albedo: [0.9, 0.1, 0.0],
         specular_exponent: 10.0,
+    };
+    let mirror = Material {
+        diffuse_color: Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+        albedo: [0.0, 10.0, 0.8],
+        specular_exponent: 1425.0,
     };
 
     let spheres = vec![
@@ -294,7 +342,7 @@ fn main() {
                 z: -12.0,
             },
             radius: 2.0,
-            material: red_rubber,
+            material: mirror,
         },
         Sphere {
             center: Vec3 {
@@ -312,7 +360,7 @@ fn main() {
                 z: -18.0,
             },
             radius: 4.0,
-            material: ivory,
+            material: mirror,
         },
     ];
 
