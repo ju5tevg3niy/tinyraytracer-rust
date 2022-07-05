@@ -68,11 +68,17 @@ impl Vec3 {
             b: self.z,
         }
     }
+
+    fn reflect(&self, normal: &Self) -> Self {
+        self.sub(&normal.mul(2.0 * self.dot(normal)))
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct Material {
     diffuse_color: Vec3,
+    albedo: [f64; 2],
+    specular_exponent: f64,
 }
 
 #[derive(Debug)]
@@ -153,15 +159,33 @@ fn cast_ray(orig: &Vec3, dir: &Vec3, spheres: &Vec<Sphere>, lights: &Vec<Light>)
         },
         //sphere
         Some((hit, normal, material)) => {
-            let mut diffuse_light_intensity = 0.0;
+            // diffuse light intensity
+            let mut dli = 0.0;
+            // specular light intensity
+            let mut sli = 0.0;
+
             for light in lights {
                 let light_dir = light.position.sub(&hit).normalize();
-                diffuse_light_intensity += light.intensity * light_dir.dot(&normal).max(0.0);
+                dli += light.intensity * light_dir.dot(&normal).max(0.0);
+                sli += light.intensity
+                    * light_dir
+                        .reflect(&normal)
+                        .dot(&dir)
+                        .max(0.0)
+                        .powf(material.specular_exponent);
             }
 
             material
                 .diffuse_color
-                .mul(diffuse_light_intensity)
+                .mul(dli * material.albedo[0])
+                .add(
+                    &Vec3 {
+                        x: 1.0,
+                        y: 1.0,
+                        z: 1.0,
+                    }
+                    .mul(sli * material.albedo[1]),
+                )
                 .to_pixel()
         }
     }
@@ -209,6 +233,8 @@ fn main() {
             y: 0.4,
             z: 0.3,
         },
+        albedo: [0.6, 0.3],
+        specular_exponent: 50.0,
     };
     let red_rubber = Material {
         diffuse_color: Vec3 {
@@ -216,6 +242,8 @@ fn main() {
             y: 0.1,
             z: 0.1,
         },
+        albedo: [0.9, 0.1],
+        specular_exponent: 10.0,
     };
 
     let spheres = vec![
@@ -257,14 +285,32 @@ fn main() {
         },
     ];
 
-    let lights = vec![Light {
-        position: Vec3 {
-            x: -20.0,
-            y: 20.0,
-            z: 20.0,
+    let lights = vec![
+        Light {
+            position: Vec3 {
+                x: -20.0,
+                y: 20.0,
+                z: 20.0,
+            },
+            intensity: 1.5,
         },
-        intensity: 1.5,
-    }];
+        Light {
+            position: Vec3 {
+                x: 30.0,
+                y: 50.0,
+                z: -25.0,
+            },
+            intensity: 1.8,
+        },
+        Light {
+            position: Vec3 {
+                x: 30.0,
+                y: 20.0,
+                z: 30.0,
+            },
+            intensity: 1.7,
+        },
+    ];
 
     dbg!(&spheres, &lights);
 
