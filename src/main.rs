@@ -170,7 +170,7 @@ fn cast_ray(orig: &Vec3, dir: &Vec3, spheres: &Vec<Sphere>, lights: &Vec<Light>)
                 sli += light.intensity
                     * light_dir
                         .reflect(&normal)
-                        .dot(&dir)
+                        .dot(dir)
                         .max(0.0)
                         .powf(material.specular_exponent);
             }
