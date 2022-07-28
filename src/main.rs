@@ -5,6 +5,7 @@ use std::{
 };
 
 const EPS: f64 = 1e-3;
+const CAST_RAY_DEPTH: usize = 2;
 
 #[derive(Debug, Clone, Copy)]
 struct Pixel {
@@ -181,7 +182,7 @@ fn cast_ray(
         b: 0.8,
     };
 
-    if depth > 4 {
+    if depth > CAST_RAY_DEPTH {
         BACKGROUND_COLOR
     } else {
         match scene_intersect(orig, dir, spheres) {
