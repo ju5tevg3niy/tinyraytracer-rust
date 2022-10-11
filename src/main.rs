@@ -263,9 +263,16 @@ fn cast_ray(
 }
 
 fn render(spheres: &Vec<Sphere>, lights: &Vec<Light>) {
+    let out = File::create("out.ppm").expect("Failed to create file");
+
+    let mut writer = BufWriter::new(out);
+
+    write!(writer, "P6\n{} {}\n255\n", WIDTH, HEIGHT).expect("Failed to write file header");
+
     const WIDTH: usize = 1024;
     const HEIGHT: usize = 768;
     // pi/3 => 180deg/3 = 60deg
+    // pi/2 => 180deg/2 = 90deg
     const FOV: f64 = PI / 3.0;
     let screen_width = 2.0 * (FOV / 2.0).tan();
 
@@ -278,12 +285,6 @@ fn render(spheres: &Vec<Sphere>, lights: &Vec<Light>) {
         let dir = Vec3 { x, y, z }.normalize();
         framebuffer.push(cast_ray(0, &ORIGIN, &dir, spheres, lights));
     }
-
-    let out = File::create("out.ppm").expect("Failed to create file");
-
-    let mut writer = BufWriter::new(out);
-
-    write!(writer, "P6\n{} {}\n255\n", WIDTH, HEIGHT).expect("Failed to write file header");
 
     for pixel in framebuffer {
         let pixel_bytes = [
