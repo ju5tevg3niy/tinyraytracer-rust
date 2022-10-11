@@ -267,7 +267,7 @@ fn render(spheres: &Vec<Sphere>, lights: &Vec<Light>) {
 
     let mut writer = BufWriter::new(out);
 
-    write!(writer, "P6\n{} {}\n255\n", WIDTH, HEIGHT).expect("Failed to write file header");
+    write!(writer, "P6\n{WIDTH} {HEIGHT}\n255\n").expect("Failed to write file header");
 
     const WIDTH: usize = 1024;
     const HEIGHT: usize = 768;
