@@ -85,6 +85,28 @@ impl Vec3 {
     fn reflect(&self, normal: &Self) -> Self {
         self.sub(&normal.mul(2.0 * self.dot(normal)))
     }
+
+    fn refract(&self, mut normal: Self, refractive_index: f64) -> Self {
+        let mut cosi = -self.dot(&normal).clamp(-1.0, 1.0);
+        let eta;
+        if cosi < 0.0 {
+            cosi = -cosi;
+            normal = normal.mul(-1.0);
+            eta = refractive_index;
+        } else {
+            eta = 1.0 / refractive_index;
+        }
+        let k = 1.0 - eta.powi(2) * (1.0 - cosi.powi(2));
+        if k < 0.0 {
+            Self {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            }
+        } else {
+            self.mul(eta).add(&normal.mul(eta * cosi - k.sqrt()))
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -95,10 +117,14 @@ struct Material {
     // albedo[0] - diffuse reflection constant
     // albedo[1] - specular reflection constant
     // albedo[2] - reflectance ?
-    albedo: [f64; 3],
+    // albedo[3] - refractance ?
+    albedo: [f64; 4],
 
     // shininess constant
     specular_exponent: f64,
+
+    // ?
+    refractive_index: f64,
 }
 
 #[derive(Debug)]
@@ -201,17 +227,28 @@ fn cast_ray(
                 let perturb = normal.mul(EPS);
                 let hit_outside = hit.add(&perturb);
                 let hit_inside = hit.sub(&perturb);
-
-                let reflect_dir = dir.reflect(&normal);
-                let reflect_orig = if reflect_dir.dot(&normal) < 0.0 {
-                    // ray is reflected from inside the object
-                    hit_inside
-                } else {
-                    // ray is reflected from outside of the object
-                    hit_outside
+                let reflect_color = {
+                    let reflect_dir = dir.reflect(&normal);
+                    let reflect_orig = if reflect_dir.dot(&normal) < 0.0 {
+                        // ray is reflected from inside the object
+                        hit_inside
+                    } else {
+                        // ray is reflected from outside of the object
+                        hit_outside
+                    };
+                    cast_ray(depth + 1, &reflect_orig, &reflect_dir, spheres, lights).to_vec3()
                 };
-                let reflect_color =
-                    cast_ray(depth + 1, &reflect_orig, &reflect_dir, spheres, lights).to_vec3();
+                let refract_color = {
+                    let refract_dir = dir.refract(normal, material.refractive_index);
+                    let refract_orig = if refract_dir.dot(&normal) < 0.0 {
+                        // ray is reflected from inside the object
+                        hit_inside
+                    } else {
+                        // ray is reflected from outside of the object
+                        hit_outside
+                    };
+                    cast_ray(depth + 1, &refract_orig, &refract_dir, spheres, lights).to_vec3()
+                };
 
                 for light in lights {
                     let light_vec = light.position.sub(&hit);
@@ -256,6 +293,7 @@ fn cast_ray(
                         .mul(sli * material.albedo[1]),
                     )
                     .add(&reflect_color.mul(material.albedo[2]))
+                    .add(&refract_color.mul(material.albedo[3]))
                     .to_pixel()
             }
         }
@@ -305,8 +343,19 @@ fn main() {
             y: 0.4,
             z: 0.3,
         },
-        albedo: [0.6, 0.3, 0.1],
+        albedo: [0.6, 0.3, 0.1, 0.0],
         specular_exponent: 50.0,
+        refractive_index: 1.0,
+    };
+    let glass = Material {
+        diffuse_color: Vec3 {
+            x: 0.6,
+            y: 0.7,
+            z: 0.8,
+        },
+        albedo: [0.0, 0.5, 0.1, 0.8],
+        specular_exponent: 125.0,
+        refractive_index: 1.5,
     };
     let red_rubber = Material {
         diffuse_color: Vec3 {
@@ -314,8 +363,9 @@ fn main() {
             y: 0.1,
             z: 0.1,
         },
-        albedo: [0.9, 0.1, 0.0],
+        albedo: [0.9, 0.1, 0.0, 0.0],
         specular_exponent: 10.0,
+        refractive_index: 1.0,
     };
     let mirror = Material {
         diffuse_color: Vec3 {
@@ -323,8 +373,9 @@ fn main() {
             y: 1.0,
             z: 1.0,
         },
-        albedo: [0.0, 10.0, 0.8],
+        albedo: [0.0, 10.0, 0.8, 0.0],
         specular_exponent: 1425.0,
+        refractive_index: 1.0,
     };
 
     let spheres = vec![
@@ -344,7 +395,7 @@ fn main() {
                 z: -12.0,
             },
             radius: 2.0,
-            material: mirror,
+            material: glass,
         },
         Sphere {
             center: Vec3 {
