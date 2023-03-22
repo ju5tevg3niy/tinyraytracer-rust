@@ -38,11 +38,11 @@ const ORIGIN: Vec3 = Vec3 {
 };
 
 impl Vec3 {
-    fn dot(&self, other: &Self) -> f64 {
+    fn dot(&self, other: Self) -> f64 {
         self.x * other.x + self.y * other.y + self.z * other.z
     }
 
-    fn add(&self, other: &Self) -> Self {
+    fn add(&self, other: Self) -> Self {
         Self {
             x: self.x + other.x,
             y: self.y + other.y,
@@ -50,7 +50,7 @@ impl Vec3 {
         }
     }
 
-    fn sub(&self, other: &Self) -> Self {
+    fn sub(&self, other: Self) -> Self {
         Self {
             x: self.x - other.x,
             y: self.y - other.y,
@@ -67,7 +67,7 @@ impl Vec3 {
     }
 
     fn norm(&self) -> f64 {
-        self.dot(self).sqrt()
+        self.dot(*self).sqrt()
     }
 
     fn normalize(&self) -> Self {
@@ -82,12 +82,12 @@ impl Vec3 {
         }
     }
 
-    fn reflect(&self, normal: &Self) -> Self {
-        self.sub(&normal.mul(2.0 * self.dot(normal)))
+    fn reflect(&self, normal: Self) -> Self {
+        self.sub(normal.mul(2.0 * self.dot(normal)))
     }
 
     fn refract(&self, mut normal: Self, refractive_index: f64) -> Self {
-        let mut cosi = -self.dot(&normal).clamp(-1.0, 1.0);
+        let mut cosi = -self.dot(normal).clamp(-1.0, 1.0);
         let eta;
         if cosi < 0.0 {
             cosi = -cosi;
@@ -104,7 +104,7 @@ impl Vec3 {
                 z: 0.0,
             }
         } else {
-            self.mul(eta).add(&normal.mul(eta * cosi - k.sqrt()))
+            self.mul(eta).add(normal.mul(eta * cosi - k.sqrt()))
         }
     }
 }
@@ -141,10 +141,10 @@ struct Light {
 }
 
 impl Sphere {
-    fn ray_intersect(&self, orig: &Vec3, dir: &Vec3) -> Option<f64> {
+    fn ray_intersect(&self, orig: Vec3, dir: Vec3) -> Option<f64> {
         let l = self.center.sub(orig);
         let tca = l.dot(dir);
-        let d2 = l.dot(&l) - tca * tca;
+        let d2 = l.dot(l) - tca * tca;
         let r2 = self.radius * self.radius;
         if d2 > r2 {
             None
@@ -164,11 +164,7 @@ impl Sphere {
     }
 }
 
-fn scene_intersect(
-    orig: &Vec3,
-    dir: &Vec3,
-    spheres: &Vec<Sphere>,
-) -> Option<(Vec3, Vec3, Material)> {
+fn scene_intersect(orig: Vec3, dir: Vec3, spheres: &Vec<Sphere>) -> Option<(Vec3, Vec3, Material)> {
     let mut closest_sphere = None;
     for sphere in spheres {
         if let Some(distance) = sphere.ray_intersect(orig, dir) {
@@ -187,8 +183,8 @@ fn scene_intersect(
     match closest_sphere {
         None => None,
         Some((distance, sphere)) => {
-            let hit = orig.add(&dir.mul(distance));
-            let normal = (hit.sub(&sphere.center)).normalize();
+            let hit = orig.add(dir.mul(distance));
+            let normal = (hit.sub(sphere.center)).normalize();
             let material = sphere.material;
             Some((hit, normal, material))
         }
@@ -197,8 +193,8 @@ fn scene_intersect(
 
 fn cast_ray(
     depth: usize,
-    orig: &Vec3,
-    dir: &Vec3,
+    orig: Vec3,
+    dir: Vec3,
     spheres: &Vec<Sphere>,
     lights: &Vec<Light>,
 ) -> Pixel {
@@ -225,36 +221,36 @@ fn cast_ray(
 
                 // move hit point a little to not intersect object again
                 let perturb = normal.mul(EPS);
-                let hit_outside = hit.add(&perturb);
-                let hit_inside = hit.sub(&perturb);
+                let hit_outside = hit.add(perturb);
+                let hit_inside = hit.sub(perturb);
                 let reflect_color = {
-                    let reflect_dir = dir.reflect(&normal);
-                    let reflect_orig = if reflect_dir.dot(&normal) < 0.0 {
+                    let reflect_dir = dir.reflect(normal);
+                    let reflect_orig = if reflect_dir.dot(normal) < 0.0 {
                         // ray is reflected from inside the object
                         hit_inside
                     } else {
                         // ray is reflected from outside of the object
                         hit_outside
                     };
-                    cast_ray(depth + 1, &reflect_orig, &reflect_dir, spheres, lights).to_vec3()
+                    cast_ray(depth + 1, reflect_orig, reflect_dir, spheres, lights).to_vec3()
                 };
                 let refract_color = {
                     let refract_dir = dir.refract(normal, material.refractive_index);
-                    let refract_orig = if refract_dir.dot(&normal) < 0.0 {
+                    let refract_orig = if refract_dir.dot(normal) < 0.0 {
                         // ray is reflected from inside the object
                         hit_inside
                     } else {
                         // ray is reflected from outside of the object
                         hit_outside
                     };
-                    cast_ray(depth + 1, &refract_orig, &refract_dir, spheres, lights).to_vec3()
+                    cast_ray(depth + 1, refract_orig, refract_dir, spheres, lights).to_vec3()
                 };
 
                 for light in lights {
-                    let light_vec = light.position.sub(&hit);
+                    let light_vec = light.position.sub(hit);
                     let light_dir = light_vec.normalize();
 
-                    let light_normal_projection = light_dir.dot(&normal);
+                    let light_normal_projection = light_dir.dot(normal);
 
                     let shadow_orig = if light_normal_projection < 0.0 {
                         // light is "behind" the hit
@@ -265,9 +261,9 @@ fn cast_ray(
                     };
 
                     if let Some((shadow_hit, _, _)) =
-                        scene_intersect(&shadow_orig, &light_dir, spheres)
+                        scene_intersect(shadow_orig, light_dir, spheres)
                     {
-                        if light_vec.norm() > shadow_hit.sub(&shadow_orig).norm() {
+                        if light_vec.norm() > shadow_hit.sub(shadow_orig).norm() {
                             continue;
                         }
                     }
@@ -275,7 +271,7 @@ fn cast_ray(
                     dli += light.intensity * light_normal_projection.max(0.0);
                     sli += light.intensity
                         * light_dir
-                            .reflect(&normal)
+                            .reflect(normal)
                             .dot(dir)
                             .max(0.0)
                             .powf(material.specular_exponent);
@@ -285,15 +281,15 @@ fn cast_ray(
                     .diffuse_color
                     .mul(dli * material.albedo[0])
                     .add(
-                        &Vec3 {
+                        Vec3 {
                             x: 1.0,
                             y: 1.0,
                             z: 1.0,
                         }
                         .mul(sli * material.albedo[1]),
                     )
-                    .add(&reflect_color.mul(material.albedo[2]))
-                    .add(&refract_color.mul(material.albedo[3]))
+                    .add(reflect_color.mul(material.albedo[2]))
+                    .add(refract_color.mul(material.albedo[3]))
                     .to_pixel()
             }
         }
@@ -321,7 +317,7 @@ fn render(spheres: &Vec<Sphere>, lights: &Vec<Light>) {
         let y = -((i / WIDTH) as f64) - 0.5 + HEIGHT as f64 / 2.0;
         let z = HEIGHT as f64 / -screen_width;
         let dir = Vec3 { x, y, z }.normalize();
-        framebuffer.push(cast_ray(0, &ORIGIN, &dir, spheres, lights));
+        framebuffer.push(cast_ray(0, ORIGIN, dir, spheres, lights));
     }
 
     for pixel in framebuffer {
